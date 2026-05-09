@@ -23,17 +23,30 @@ type WorkflowStatus struct {
 type ProgressQuery struct{}
 
 type ActivitySpan struct {
-	Name      string  `json:"name"`
-	StartedAt int64   `json:"started_at_ms"`  // unix ms
-	EndedAt   int64   `json:"ended_at_ms"`    // unix ms, 0 if still running
-	DurationMs int64  `json:"duration_ms"`    // 0 if still running
-	Status    string  `json:"status"`         // "running", "completed", "failed"
+	Name        string  `json:"name"`
+	StartedAt  int64   `json:"started_at_ms"`
+	EndedAt    int64   `json:"ended_at_ms"`
+	DurationMs int64  `json:"duration_ms"`
+	Status    string  `json:"status"`
 }
 
 type TimelineResponse struct {
-	WorkflowID  string         `json:"workflow_id"`
-	StartedAt   int64          `json:"started_at_ms"`
-	EndedAt     int64          `json:"ended_at_ms"`
-	Progress    int            `json:"progress"`
-	Activities  []ActivitySpan `json:"activities"`
+	WorkflowID      string         `json:"workflow_id"`
+	StartedAt      int64          `json:"started_at_ms"`
+	EndedAt        int64          `json:"ended_at_ms"`
+	Progress       int            `json:"progress"`
+	TotalActivities int            `json:"total_activities"`
+	Activities     []ActivitySpan `json:"activities"`
+}
+
+type OrderRequest struct {
+	OrderID     string `json:"order_id"`
+	CustomerID  string `json:"customer_id"`
+	Items       []string `json:"items"`
+}
+
+type OrderProgress struct {
+	Progress int    `json:"progress"`
+	Step     string `json:"step"`
+	Complete bool   `json:"complete"`
 }

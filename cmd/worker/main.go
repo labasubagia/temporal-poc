@@ -34,8 +34,11 @@ func main() {
 		MaxConcurrentActivityExecutionSize: 1,
 	})
 
+
 	w.RegisterWorkflow(workflow.PaymentWorkflow)
+	w.RegisterWorkflow(workflow.OrderFulfillmentWorkflow)
 	w.RegisterActivity(activities.New())
+	w.RegisterActivity(activities.NewOrderActivities())
 
 	log.Println("Worker started, connecting to:", temporalAddr)
 	if err := w.Run(worker.InterruptCh()); err != nil {

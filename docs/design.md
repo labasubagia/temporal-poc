@@ -120,3 +120,80 @@ Response:
 - **Workflow** — Deterministic execution, defines steps
 - **Activity** — Non-deterministic operations (simulated with sleep)
 - **Query handler** — Allows reading workflow state from outside without signals
+
+## Order Fulfillment Workflow
+
+### Purpose
+
+Demonstrates activity count tracking with progress calculation based on total activities executed.
+
+### Flowchart
+
+```mermaid
+flowchart LR
+    A[ValidateInventory<br/>1s] --> B[CheckStock<br/>1s]
+    B --> C[ReserveItems<br/>1s]
+    C --> D[ProcessPayment<br/>2s]
+    D --> E[ShipOrder<br/>2s]
+    E --> F[SendNotification<br/>1s]
+```
+
+Total execution time: ~8 seconds.
+
+### Activity Count Validation
+
+The workflow tracks executed activities:
+- `TotalActivities` = 6 (expected)
+- `ExecutedCount` incremented after each activity
+- Validates `ExecutedCount == TotalActivities` before completion
+
+### Activities
+
+| Activity | Duration | Description |
+|----------|----------|-------------|
+| ValidateInventory | 1s | Validate order and inventory |
+| CheckStock | 1s | Check stock availability |
+| ReserveItems | 1s | Reserve items in warehouse |
+| ProcessPayment | 2s | Process payment |
+| ShipOrder | 2s | Ship order to customer |
+| SendNotification | 1s | Send notification to customer |
+
+### New API Endpoints
+
+### POST /api/order/start
+
+Start an order fulfillment workflow.
+
+Request:
+```json
+{
+    "order_id": "ORD-123",
+    "customer_id": "CUST-456",
+    "items": ["Item1", "Item2"]
+}
+```
+
+Response:
+```json
+{
+    "workflow_id": "order-ORD-123-xxx"
+}
+```
+
+### GET /api/payment/timeline?workflow_id=X
+
+Updated to include `total_activities` field.
+
+Response:
+```json
+{
+    "workflow_id": "order-ORD-123-xxx",
+    "progress": 50,
+    "total_activities": 6,
+    "activities": [
+        {"name": "ValidateInventory", "status": "completed", "duration_ms": 1000},
+        {"name": "CheckStock", "status": "completed", "duration_ms": 1000},
+        {"name": "ReserveItems", "status": "running"}
+    ]
+}
+```

@@ -1,0 +1,3 @@
+package workflow
+
+const QUERY_TOTAL_SUBPROCESS = "TOTAL_SUBPROCESS"
