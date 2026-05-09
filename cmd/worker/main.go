@@ -37,8 +37,10 @@ func main() {
 
 	w.RegisterWorkflow(workflow.PaymentWorkflow)
 	w.RegisterWorkflow(workflow.OrderFulfillmentWorkflow)
+	w.RegisterWorkflow(workflow.FailingWorkflow)
 	w.RegisterActivity(activities.New())
 	w.RegisterActivity(activities.NewOrderActivities())
+	w.RegisterActivity(activities.NewFailingActivities())
 
 	log.Println("Worker started, connecting to:", temporalAddr)
 	if err := w.Run(worker.InterruptCh()); err != nil {

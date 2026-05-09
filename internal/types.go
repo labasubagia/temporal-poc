@@ -50,3 +50,7 @@ type OrderProgress struct {
 	Step     string `json:"step"`
 	Complete bool   `json:"complete"`
 }
+
+type FailingRequest struct {
+	ID string `json:"id"`
+}

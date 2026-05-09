@@ -83,6 +83,36 @@ func (s *Server) handleStartOrder(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleStartFailing(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req internal.FailingRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	wo := client.StartWorkflowOptions{
+		TaskQueue: "payment-worker",
+		ID:        fmt.Sprintf("failing-%s-%d", req.ID, os.Getpid()),
+	}
+
+	run, err := s.temporal.ExecuteWorkflow(context.Background(), wo, "FailingWorkflow", req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to start workflow: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"workflow_id": run.GetID(),
+		"run_id":      run.GetRunID(),
+	})
+}
+
 func (s *Server) handleGetWorkflowTimeline(w http.ResponseWriter, r *http.Request) {
 	workflowID := r.URL.Query().Get("workflow_id")
 	if workflowID == "" {
@@ -91,12 +121,12 @@ func (s *Server) handleGetWorkflowTimeline(w http.ResponseWriter, r *http.Reques
 	}
 
 	expectedTotal := r.URL.Query().Get("expected_total") == "true"
-	totalSubProcess := 0
+	queryTotal := 0
 
 	if expectedTotal {
 		remoteVal, err := s.temporal.QueryWorkflow(r.Context(), workflowID, "", wf.QUERY_TOTAL_SUBPROCESS)
 		if err == nil {
-			remoteVal.Get(&totalSubProcess)
+			remoteVal.Get(&queryTotal)
 		}
 	}
 
@@ -164,7 +194,6 @@ func (s *Server) handleGetWorkflowTimeline(w http.ResponseWriter, r *http.Reques
 				span.EndedAt = ts
 				span.DurationMs = ts - span.StartedAt
 				span.Status = "failed"
-				completedActivities++
 				for i := range result.Activities {
 					if result.Activities[i].Name == span.Name && result.Activities[i].Status == "running" {
 						result.Activities[i] = *span
@@ -175,9 +204,9 @@ func (s *Server) handleGetWorkflowTimeline(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	if expectedTotal && totalSubProcess > 0 {
-		result.TotalActivities = totalSubProcess
-		result.Progress = (completedActivities * 100) / totalSubProcess
+	if expectedTotal && queryTotal > 0 {
+		result.TotalActivities = queryTotal
+		result.Progress = (completedActivities * 100) / queryTotal
 	} else {
 		result.TotalActivities = scheduledCount
 		if scheduledCount > 0 {
@@ -244,8 +273,12 @@ func main() {
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
 	mux.HandleFunc("/api/payment/start", server.handleStartPayment)
 	mux.HandleFunc("/api/order/start", server.handleStartOrder)
+	mux.HandleFunc("/api/failing/start", server.handleStartFailing)
 	mux.HandleFunc("/api/workflow/result", server.handleGetWorkflowResult)
 	mux.HandleFunc("/api/workflow/timeline", server.handleGetWorkflowTimeline)
+	mux.HandleFunc("/failing", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, staticDir+"/failing.html")
+	})
 	mux.HandleFunc("/payment", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, staticDir+"/payment.html")
 	})
