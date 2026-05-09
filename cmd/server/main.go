@@ -23,119 +23,18 @@ func NewServer(temporal client.Client) *Server {
 	return &Server{temporal: temporal}
 }
 
-func (s *Server) handleStartPayment(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
+func calculateProgress(completed, scheduled, queryTotal int) int {
+	if queryTotal > 0 {
+		return (completed * 100) / queryTotal
 	}
-
-	var req internal.PaymentRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
+	if scheduled <= 0 {
+		return 0
 	}
-
-	wo := client.StartWorkflowOptions{
-		TaskQueue: "payment-worker",
-		ID:        fmt.Sprintf("payment-%s-%d", req.OrderID, os.Getpid()),
-	}
-
-	run, err := s.temporal.ExecuteWorkflow(context.Background(), wo, "PaymentWorkflow", req)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to start workflow: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"workflow_id": run.GetID(),
-		"run_id":      run.GetRunID(),
-	})
+	return (completed * 100) / scheduled
 }
 
-func (s *Server) handleStartOrder(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req internal.OrderRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	wo := client.StartWorkflowOptions{
-		TaskQueue: "payment-worker",
-		ID:        fmt.Sprintf("order-%s-%d", req.OrderID, os.Getpid()),
-	}
-
-	run, err := s.temporal.ExecuteWorkflow(context.Background(), wo, "OrderFulfillmentWorkflow", req)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to start workflow: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"workflow_id": run.GetID(),
-		"run_id":      run.GetRunID(),
-	})
-}
-
-func (s *Server) handleStartFailing(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req internal.FailingRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	wo := client.StartWorkflowOptions{
-		TaskQueue: "payment-worker",
-		ID:        fmt.Sprintf("failing-%s-%d", req.ID, os.Getpid()),
-	}
-
-	run, err := s.temporal.ExecuteWorkflow(context.Background(), wo, "FailingWorkflow", req)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to start workflow: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"workflow_id": run.GetID(),
-		"run_id":      run.GetRunID(),
-	})
-}
-
-func (s *Server) handleGetWorkflowTimeline(w http.ResponseWriter, r *http.Request) {
-	workflowID := r.URL.Query().Get("workflow_id")
-	if workflowID == "" {
-		http.Error(w, "workflow_id is required", http.StatusBadRequest)
-		return
-	}
-
-	expectedTotal := r.URL.Query().Get("expected_total") == "true"
-	queryTotal := 0
-
-	if expectedTotal {
-		remoteVal, err := s.temporal.QueryWorkflow(r.Context(), workflowID, "", wf.QUERY_TOTAL_SUBPROCESS)
-		if err == nil {
-			remoteVal.Get(&queryTotal)
-		}
-	}
-
-	iter := s.temporal.GetWorkflowHistory(
-		r.Context(), workflowID, "", false,
-		enums.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT,
-	)
-
-	result := internal.TimelineResponse{WorkflowID: workflowID}
+func buildTimelineFromHistory(iter client.HistoryEventIterator, queryTotal int, expectedTotal bool) *internal.TimelineResponse {
+	result := &internal.TimelineResponse{}
 	scheduledAt := map[int64]int64{}
 	activityName := map[int64]string{}
 	spans := map[int64]*internal.ActivitySpan{}
@@ -145,8 +44,7 @@ func (s *Server) handleGetWorkflowTimeline(w http.ResponseWriter, r *http.Reques
 	for iter.HasNext() {
 		event, err := iter.Next()
 		if err != nil {
-			http.Error(w, fmt.Sprintf("failed to read history: %v", err), http.StatusInternalServerError)
-			return
+			return result
 		}
 
 		ts := event.GetEventTime().AsTime().UnixMilli()
@@ -166,9 +64,9 @@ func (s *Server) handleGetWorkflowTimeline(w http.ResponseWriter, r *http.Reques
 			attrs := event.GetActivityTaskStartedEventAttributes()
 			schedID := attrs.GetScheduledEventId()
 			span := &internal.ActivitySpan{
-				Name:       activityName[schedID],
-				StartedAt:  scheduledAt[schedID],
-				Status:     "running",
+				Name:      activityName[schedID],
+				StartedAt: scheduledAt[schedID],
+				Status:    "running",
 			}
 			spans[schedID] = span
 			result.Activities = append(result.Activities, *span)
@@ -206,16 +104,132 @@ func (s *Server) handleGetWorkflowTimeline(w http.ResponseWriter, r *http.Reques
 
 	if expectedTotal && queryTotal > 0 {
 		result.TotalActivities = queryTotal
-		result.Progress = (completedActivities * 100) / queryTotal
+		result.Progress = calculateProgress(completedActivities, scheduledCount, queryTotal)
 	} else {
 		result.TotalActivities = scheduledCount
-		if scheduledCount > 0 {
-			result.Progress = (completedActivities * 100) / scheduledCount
-		}
+		result.Progress = calculateProgress(completedActivities, scheduledCount, 0)
+	}
+
+	return result
+}
+
+func (s *Server) handleStartPayment(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req internal.PaymentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	wo := client.StartWorkflowOptions{
+		TaskQueue: "payment-worker",
+		ID:        fmt.Sprintf("payment-%s-%d", req.OrderID, os.Getpid()),
+	}
+
+	run, err := s.temporal.ExecuteWorkflow(context.Background(), wo, "PaymentWorkflow", req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to start workflow: %v", err), http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
+		"workflow_id": run.GetID(),
+		"run_id":      run.GetRunID(),
+	})
+}
+
+func (s *Server) handleStartOrder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req internal.OrderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	wo := client.StartWorkflowOptions{
+		TaskQueue: "payment-worker",
+		ID:        fmt.Sprintf("order-%s-%d", req.OrderID, os.Getpid()),
+	}
+
+	run, err := s.temporal.ExecuteWorkflow(context.Background(), wo, "OrderFulfillmentWorkflow", req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to start workflow: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
+		"workflow_id": run.GetID(),
+		"run_id":      run.GetRunID(),
+	})
+}
+
+func (s *Server) handleStartFailing(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req internal.FailingRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	wo := client.StartWorkflowOptions{
+		TaskQueue: "payment-worker",
+		ID:        fmt.Sprintf("failing-%s-%d", req.ID, os.Getpid()),
+	}
+
+	run, err := s.temporal.ExecuteWorkflow(context.Background(), wo, "FailingWorkflow", req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to start workflow: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
+		"workflow_id": run.GetID(),
+		"run_id":      run.GetRunID(),
+	})
+}
+
+func (s *Server) handleGetWorkflowTimeline(w http.ResponseWriter, r *http.Request) {
+	workflowID := r.URL.Query().Get("workflow_id")
+	if workflowID == "" {
+		http.Error(w, "workflow_id is required", http.StatusBadRequest)
+		return
+	}
+
+	expectedTotal := r.URL.Query().Get("expected_total") == "true"
+	queryTotal := 0
+
+	if expectedTotal {
+		remoteVal, err := s.temporal.QueryWorkflow(r.Context(), workflowID, "", wf.QUERY_TOTAL_SUBPROCESS)
+		if err == nil {
+			_ = remoteVal.Get(&queryTotal)
+		}
+	}
+
+	iter := s.temporal.GetWorkflowHistory(
+		r.Context(), workflowID, "", false,
+		enums.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT,
+	)
+
+	result := buildTimelineFromHistory(iter, queryTotal, expectedTotal)
+	result.WorkflowID = workflowID
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(result) //nolint:errcheck
 }
 
 func (s *Server) handleGetWorkflowResult(w http.ResponseWriter, r *http.Request) {
@@ -235,7 +249,7 @@ func (s *Server) handleGetWorkflowResult(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(result) //nolint:errcheck
 }
 
 func main() {

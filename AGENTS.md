@@ -3,6 +3,14 @@
 See [README.md](README.md) for project documentation and setup.
 See [docs/](docs/) for design documentation.
 
+## Before commit
+
+Run lint before committing:
+
+```sh
+golangci-lint run
+```
+
 ## Quick commands
 
 ```sh
