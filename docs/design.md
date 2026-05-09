@@ -9,6 +9,7 @@ Payment and Order processing workflows using Temporal for reliable, observable, 
 ```
 cmd/server/       — HTTP server (API + static frontend)
 cmd/worker/       — Temporal worker (registers workflows/activities)
+cmd/ws/           — WebSocket server (real-time updates)
 activities/       — Activity implementations (non-deterministic)
 workflow/         — Workflow definitions (deterministic)
 internal/         — Shared types
@@ -21,6 +22,8 @@ internal/         — Shared types
 | `/` | Routing page - select Payment or Order workflow |
 | `/payment` | Payment workflow UI |
 | `/order` | Order workflow UI |
+| `/ws-purchase` | Purchase Order UI (WebSocket real-time) |
+| `/failing` | Failing workflow UI |
 
 ## Payment Workflow
 
@@ -76,6 +79,157 @@ Total execution time: ~8 seconds.
 | ShipOrder | 2s | Ship order to customer |
 | SendOrderNotification | 1s | Send notification to customer |
 
+## Purchase Order Workflow (WebSocket Real-time)
+
+### Overview
+
+The Purchase Order workflow demonstrates real-time progress updates using WebSocket. Unlike Payment and Order workflows which use polling, this workflow sends live updates to the frontend as each activity completes.
+
+### Flowchart
+
+```mermaid
+flowchart LR
+    A[CreatePurchaseOrder<br/>3s] --> B[ValidateStock<br/>1s]
+    B --> C[AllocateItems<br/>2s]
+    C --> D[CalculatePricing<br/>1s]
+    D --> E[ConfirmOrder<br/>1s]
+    E --> F[NotifyCustomer<br/>1s]
+    F --> G[CompletePurchase<br/>1s]
+```
+
+Total execution time: ~10 seconds.
+
+### Activities
+
+| Activity | Duration | Description |
+|----------|----------|-------------|
+| CreatePurchaseOrder | 3s | Create purchase order record |
+| ValidateStock | 1s | Validate stock availability |
+| AllocateItems | 2s | Allocate items in warehouse |
+| CalculatePricing | 1s | Calculate order pricing |
+| ConfirmOrder | 1s | Confirm the order |
+| NotifyCustomer | 1s | Send notification to customer |
+| CompletePurchase | 1s | Finalize purchase |
+
+### WebSocket Architecture
+
+```mermaid
+flowchart TD
+    subgraph Frontend
+        F[Browser]
+    end
+    
+    subgraph Server
+        S[HTTP Server :8080]
+    end
+    
+    subgraph Worker
+        W[Temporal Worker]
+    end
+    
+    subgraph Temporal
+        T[Temporal Server]
+    end
+    
+    WS[ws-server :8081]
+    
+    F -->|WebSocket| WS
+    F -->|POST /api/purchase/start| S
+    S -->|Start workflow| T
+    T -->|Execute activities| W
+    W -->|NotifyProgress activity| WS
+    WS -->|Broadcast| F
+```
+
+### How Real-time Updates Work
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant F as Frontend
+    participant S as Server API
+    participant T as Temporal
+    participant W as Worker
+    participant WS as ws-server
+
+    U->>F: Click "Start Purchase Order"
+    F->>S: POST /api/purchase/start
+    S->>T: Start PurchaseOrderWorkflow
+    T-->>S: workflow_id
+    S-->>F: {workflow_id: "..."}
+    
+    F->>WS: Connect WebSocket (workflow_id)
+    WS-->>F: Connected
+    
+    loop Each Activity
+        T->>W: Execute activity
+        W->>W: Start activity
+        W->>WS: POST /ws/notify (started)
+        WS->>F: Signal: {activity, status: "started"}
+        W->>W: Complete activity
+        W->>WS: POST /ws/notify (completed)
+        WS->>F: Signal: {activity, status: "completed"}
+    end
+    
+    T-->>F: Workflow completes
+    F->>F: Show Complete
+```
+
+### Frontend Implementation
+
+The Purchase Order page (`/ws-purchase`) uses WebSocket for real-time updates:
+
+1. **Connect WebSocket** — After starting workflow, connects to ws-server with workflow_id
+2. **Receive signals** — ws-server broadcasts activity updates to connected clients
+3. **Display progress** — Shows activity log with status (started/completed/failed)
+4. **No polling** — Updates are pushed in real-time, no need to poll timeline API
+
+### WebSocket Server
+
+The ws-server (`cmd/ws`) handles real-time communication:
+
+- **`/ws?workflow_id=X`** — WebSocket connection endpoint
+- **`/ws/notify`** — Receives activity notifications from worker
+- **Broadcast** — Sends updates to all clients connected for a workflow
+
+### NotifyProgress Activity
+
+The workflow calls `NotifyProgress` activity after each step:
+
+```go
+func NotifyProgress(ctx context.Context, workflowID, activityName, status string, totalActivities int) error {
+    // POST to ws-server /ws/notify
+}
+```
+
+This activity:
+1. Sends HTTP POST to ws-server with workflow_id, activity, status, total_activities
+2. ws-server broadcasts to all connected WebSocket clients
+3. Frontend receives and displays in activity log
+
+### API Endpoints
+
+#### POST /api/purchase/start
+
+Start a purchase order workflow.
+
+Request:
+```json
+{
+    "order_id": "PO-123",
+    "customer_id": "CUST-456",
+    "items": ["Item1", "Item2"]
+}
+```
+
+Response:
+```json
+{
+    "workflow_id": "purchase-PO-123-xxx",
+    "run_id": "xxx"
+}
+```
+
 ## API Endpoints
 
 ### POST /api/payment/start
@@ -120,6 +274,27 @@ Response:
 }
 ```
 
+### POST /api/purchase/start
+
+Start a purchase order workflow.
+
+Request:
+```json
+{
+    "order_id": "PO-123",
+    "customer_id": "CUST-456",
+    "items": ["Item1", "Item2"]
+}
+```
+
+Response:
+```json
+{
+    "workflow_id": "purchase-PO-123-xxx",
+    "run_id": "xxx"
+}
+```
+
 ### GET /api/workflow/timeline?workflow_id=X
 
 Get workflow timeline from history.
@@ -136,23 +311,9 @@ Response:
 }
 ```
 
-### GET /api/workflow/timeline-with-total-subprocess?workflow_id=X
-
-Get workflow timeline with total activities from query handler.
-
-Response:
-```json
-{
-    "workflow_id": "order-ORD-123-xxx",
-    "started_at_ms": 1778299301380,
-    "ended_at_ms": 1778299317270,
-    "progress": 100,
-    "total_activities": 6,
-    "activities": [...]
-}
-```
-
 ### GET /api/workflow/result?workflow_id=X
+
+Get workflow result.
 
 ## Key Concepts
 
@@ -160,10 +321,22 @@ Response:
 - **Activity** — Non-deterministic operations (simulated with sleep)
 - **Query handler** — Allows reading workflow state from outside without signals
 - **Timeline API** — Reads workflow history to show activity progress
+- **WebSocket** — Real-time updates for Purchase Order workflow
 
 ## Loading Progress
 
-### Backend Implementation
+### Two Approaches
+
+This project demonstrates two different approaches for showing workflow progress:
+
+| Approach | Used By | Mechanism |
+|----------|---------|-----------|
+| **Polling** | Payment, Order, Failing | Frontend polls `/api/workflow/timeline` every 1s |
+| **WebSocket** | Purchase Order | Real-time signals via ws-server |
+
+### Polling Approach (Payment, Order, Failing)
+
+#### Backend Implementation
 
 The timeline API (`GET /api/workflow/timeline?workflow_id=X`) calculates progress based on completed activities.
 
@@ -205,9 +378,9 @@ This is less accurate at the beginning because:
 
 So without `expected_total`, progress jumps to ~50% once the second activity starts.
 
-See `cmd/server/main.go:206` (`handleGetWorkflowTimeline`) and `cmd/server/main.go:36` (`buildTimelineFromHistory`).
+See `cmd/server/main.go:209` (`handleGetWorkflowTimeline`) and `cmd/server/main.go:36` (`buildTimelineFromHistory`).
 
-### Frontend Polling
+#### Frontend Polling (workflow-app.js)
 
 ```mermaid
 sequenceDiagram
@@ -241,11 +414,49 @@ The frontend uses polling to fetch timeline/progress:
 
 The polling approach ensures the UI stays updated without needing WebSockets or server push.
 
-The frontend uses polling to fetch timeline/progress:
+### WebSocket Approach (Purchase Order)
 
-- `workflow-app.js` — Async/await polling loop with 1-second interval
-- `runPollLoop()` fetches `/api/workflow/timeline` repeatedly until workflow completes or fails
-- For workflows with known activity count (Payment, Order, Failing), `expected_total=true` is passed for accurate progress
-- For dynamic/unknown workflows, default behavior is used
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant F as Frontend
+    participant S as Server API
+    participant T as Temporal
+    participant W as Worker
+    participant WS as ws-server
 
-The polling approach ensures the UI stays updated without needing WebSockets or server push.
+    U->>F: Click "Start Purchase Order"
+    F->>S: POST /api/purchase/start
+    S->>T: Start workflow
+    T-->>S: workflow_id
+    S-->>F: {workflow_id: "..."}
+    
+    F->>WS: Connect WebSocket (workflow_id)
+    WS-->>F: Connected
+    
+    loop Each Activity
+        T->>W: Execute activity
+        W->>W: Start activity
+        W->>WS: POST /ws/notify (started)
+        WS->>F: Signal: {activity, status: "started"}
+        W->>W: Complete activity
+        W->>WS: POST /ws/notify (completed)
+        WS->>F: Signal: {activity, status: "completed"}
+    end
+    
+    T-->>F: Workflow completes
+    F->>F: Show Complete
+```
+
+**How it works:**
+
+1. **Frontend** connects to ws-server via WebSocket with workflow_id
+2. **Worker** calls `NotifyProgress` activity after each step (started/completed/failed)
+3. **NotifyProgress** sends HTTP POST to ws-server `/ws/notify`
+4. **ws-server** broadcasts signal to all clients connected for that workflow_id
+5. **Frontend** receives signal and updates activity log in real-time
+
+**Advantages:**
+- Real-time updates (no 1s delay)
+- No polling overhead
+- Accurate progress (total_activities passed in each signal)
