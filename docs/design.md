@@ -160,3 +160,47 @@ Response:
 - **Activity** — Non-deterministic operations (simulated with sleep)
 - **Query handler** — Allows reading workflow state from outside without signals
 - **Timeline API** — Reads workflow history to show activity progress
+
+## Loading Progress
+
+### Backend Implementation
+
+The timeline API (`GET /api/workflow/timeline?workflow_id=X`) calculates progress based on completed activities.
+
+**With `expected_total=true`:**
+
+The API queries the workflow via a query handler (`wf.QUERY_TOTAL_SUBPROCESS`) to get the total number of activities upfront. Progress is calculated as:
+
+```
+progress = (completed_activities * 100) / total_activities
+```
+
+This provides accurate progress from the start (e.g., 0%, 25%, 50%, 75%, 100%).
+
+**Without `expected_total` (default):**
+
+The API only knows activities that have been scheduled so far (from workflow history). Progress is calculated as:
+
+```
+progress = (completed_activities * 100) / scheduled_count
+```
+
+This is less accurate at the beginning because:
+- First poll: 1 scheduled, 0 completed → 0%
+- Second poll: 2 scheduled, 1 completed → 50%
+- Third poll: 3 scheduled, 2 completed → 66%
+
+So without `expected_total`, progress jumps to ~50% once the second activity starts.
+
+See `cmd/server/main.go:206` (`handleGetWorkflowTimeline`) and `cmd/server/main.go:36` (`buildTimelineFromHistory`).
+
+### Frontend Polling
+
+The frontend uses polling to fetch timeline/progress:
+
+- `workflow-app.js` — Async/await polling loop with 1-second interval
+- `runPollLoop()` fetches `/api/workflow/timeline` repeatedly until workflow completes or fails
+- For workflows with known activity count (Payment, Order, Failing), `expected_total=true` is passed for accurate progress
+- For dynamic/unknown workflows, default behavior is used
+
+The polling approach ensures the UI stays updated without needing WebSockets or server push.
