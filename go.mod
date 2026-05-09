@@ -3,6 +3,7 @@ module github.com/labasubagia/temporal-poc
 go 1.26.1
 
 require (
+	github.com/gorilla/websocket v1.5.3
 	github.com/stretchr/testify v1.11.1
 	go.temporal.io/api v1.62.11
 	go.temporal.io/sdk v1.43.0
@@ -15,7 +16,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.22.0 // indirect
 	github.com/nexus-rpc/sdk-go v0.6.0 // indirect
