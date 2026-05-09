@@ -1,5 +1,5 @@
 function injectNavbar(currentPage) {
-    const routes = { '/': 'Home', '/payment': 'Payment', '/order': 'Order', '/failing': 'Failing' };
+    const routes = { '/': 'Home', '/payment': 'Payment', '/order': 'Order', '/ws-purchase': 'Purchase (WS)', '/failing': 'Failing' };
     const active = currentPage || window.location.pathname;
     const html = Object.entries(routes).map(([path, label]) => {
         const isActive = active === path;

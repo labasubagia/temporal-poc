@@ -54,3 +54,9 @@ type OrderProgress struct {
 type FailingRequest struct {
 	ID string `json:"id"`
 }
+
+type PurchaseRequest struct {
+	OrderID    string   `json:"order_id"`
+	CustomerID string   `json:"customer_id"`
+	Items      []string `json:"items"`
+}

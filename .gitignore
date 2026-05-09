@@ -1,4 +1,5 @@
 bin/
 /server
 /worker
+/ws-server
 *.out

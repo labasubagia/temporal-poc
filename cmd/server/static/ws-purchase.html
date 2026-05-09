@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Purchase Order (WebSocket)</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/workflow-app.js"></script>
+</head>
+
+<body class="bg-gray-50 min-h-screen p-4">
+    <script>injectNavbar('/ws-purchase')</script>
+    <div class="w-full max-w-lg mx-auto">
+        <div x-data="wsPurchaseApp()" class="border border-gray-200 bg-white rounded-lg p-6">
+            <h1 class="text-xl font-medium text-gray-900 mb-1">Purchase Order (WebSocket)</h1>
+            <p class="text-gray-400 text-sm mb-6">Real-time progress via WorkflowSignal</p>
+
+            <div x-show="!workflowId" class="space-y-4">
+                <div>
+                    <label class="block text-sm text-gray-600 mb-1">Order ID</label>
+                    <input x-model="orderId" type="text" placeholder="PO-12345"
+                        class="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:border-gray-400 transition">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-600 mb-1">Customer ID</label>
+                    <input x-model="customerId" type="text" placeholder="CUST-001"
+                        class="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:border-gray-400 transition">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-600 mb-1">Items (comma-separated)</label>
+                    <input x-model="items" type="text" placeholder="Item1, Item2"
+                        class="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:border-gray-400 transition">
+                </div>
+                <button @click="startOrder()" :disabled="loading"
+                    class="w-full py-2.5 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded text-sm transition disabled:opacity-50">
+                    <span x-show="!loading">Start Purchase Order</span>
+                    <span x-show="loading">Connecting...</span>
+                </button>
+            </div>
+
+            <div x-show="workflowId" x-transition>
+                <div class="mb-4 p-3 bg-gray-50 rounded">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-xs text-gray-400 uppercase">Workflow ID</span>
+                        <span x-show="wsConnected" class="text-xs text-green-500">● Connected</span>
+                        <span x-show="!wsConnected" class="text-xs text-yellow-500">● Reconnecting...</span>
+                    </div>
+                    <p class="font-mono text-xs text-gray-600 truncate" x-text="workflowId"></p>
+                </div>
+
+                <div class="bg-gray-50 rounded p-4 mb-4">
+                    <p class="text-xs text-gray-400 uppercase mb-1">Current Activity</p>
+                    <p class="text-gray-800" x-text="activity || 'Waiting...'"></p>
+                </div>
+
+                <div x-show="signalLogs.length > 0" class="mb-5">
+                    <p class="text-xs text-gray-400 uppercase mb-2">Activity Log</p>
+                    <div class="space-y-1">
+                        <template x-for="log in signalLogs" :key="log.time + log.activity">
+                            <div class="flex items-center gap-2 text-xs">
+                                <span class="text-gray-400" x-text="log.time"></span>
+                                <span class="text-gray-600" x-text="log.activity"></span>
+                                <span class="px-1.5 py-0.5 rounded text-xs"
+                                    :class="log.status === 'failed' ? 'bg-red-100 text-red-600' : log.status === 'completed' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'"
+                                    x-text="log.status"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <button @click="reset()"
+                    class="w-full py-2 text-gray-500 hover:text-gray-700 border border-gray-200 rounded text-sm transition">
+                    Start New Order
+                </button>
+            </div>
+
+            <div x-show="error" class="mt-4 p-3 bg-red-50 border border-red-100 rounded text-red-600 text-sm">
+                <p x-text="error"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function wsPurchaseApp() {
+            return {
+                orderId: 'PO-' + Math.random().toString(36).substr(2, 5).toUpperCase(),
+                customerId: 'CUST-001',
+                items: 'Item1, Item2',
+                workflowId: '',
+                activity: '',
+                loading: false,
+                error: '',
+                ws: null,
+                wsConnected: false,
+                signalLogs: [],
+
+                startOrder() {
+                    this.loading = true;
+                    this.error = '';
+                    this.activity = '';
+                    this.signalLogs = [];
+
+                    fetch('/api/purchase/start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            order_id: this.orderId,
+                            customer_id: this.customerId,
+                            items: this.items.split(',').map(i => i.trim()).filter(i => i)
+                        })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        this.workflowId = data.workflow_id;
+                        this.loading = false;
+                        this.connectWebSocket();
+                    })
+                    .catch(err => {
+                        this.error = 'Failed to start: ' + err.message;
+                        this.loading = false;
+                    });
+                },
+
+                connectWebSocket() {
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const wsUrl = `${protocol}//${window.location.hostname}:8081/ws?workflow_id=${this.workflowId}`;
+                    this.ws = new WebSocket(wsUrl);
+
+                    this.ws.onopen = () => {
+                        this.wsConnected = true;
+                    };
+
+                    this.ws.onmessage = (event) => {
+                        try {
+                            const data = JSON.parse(event.data);
+                            this.addSignalLog(data);
+                        } catch (e) {
+                            console.error('Parse error:', e);
+                        }
+                    };
+
+                    this.ws.onclose = () => {
+                        this.wsConnected = false;
+                        if (this.workflowId) {
+                            setTimeout(() => this.connectWebSocket(), 2000);
+                        }
+                    };
+
+                    this.ws.onerror = (err) => {
+                        console.error('WebSocket error:', err);
+                        this.error = 'WebSocket connection failed';
+                    };
+                },
+
+                addSignalLog(signal) {
+                    this.signalLogs.push({
+                        time: new Date().toLocaleTimeString(),
+                        activity: signal.activity,
+                        status: signal.status
+                    });
+
+                    if (signal.status === 'started') {
+                        this.activity = signal.activity;
+                    } else if (signal.status === 'completed') {
+                        this.activity = signal.activity + ' ✓';
+                    } else if (signal.status === 'failed') {
+                        this.error = 'Failed: ' + signal.activity;
+                        this.activity = 'Failed';
+                    }
+                },
+
+                reset() {
+                    if (this.ws) {
+                        this.ws.close();
+                        this.ws = null;
+                    }
+                    this.workflowId = '';
+                    this.activity = '';
+                    this.signalLogs = [];
+                    this.error = '';
+                    this.wsConnected = false;
+                }
+            };
+        }
+    </script>
+</body>
+
+</html>

@@ -203,6 +203,37 @@ func (s *Server) handleStartFailing(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleStartPurchase(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req internal.PurchaseRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	wo := client.StartWorkflowOptions{
+		TaskQueue: "payment-worker",
+		ID:        fmt.Sprintf("purchase-%s-%d", req.OrderID, os.Getpid()),
+	}
+
+	run, err := s.temporal.ExecuteWorkflow(context.Background(), wo, "PurchaseOrderWorkflow", req)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("failed to start workflow: %v", err)}) //nolint:errcheck
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
+		"workflow_id": run.GetID(),
+		"run_id":      run.GetRunID(),
+	})
+}
+
 func (s *Server) handleGetWorkflowTimeline(w http.ResponseWriter, r *http.Request) {
 	workflowID := r.URL.Query().Get("workflow_id")
 	if workflowID == "" {
@@ -287,6 +318,7 @@ func main() {
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
 	mux.HandleFunc("/api/payment/start", server.handleStartPayment)
 	mux.HandleFunc("/api/order/start", server.handleStartOrder)
+	mux.HandleFunc("/api/purchase/start", server.handleStartPurchase)
 	mux.HandleFunc("/api/failing/start", server.handleStartFailing)
 	mux.HandleFunc("/api/workflow/result", server.handleGetWorkflowResult)
 	mux.HandleFunc("/api/workflow/timeline", server.handleGetWorkflowTimeline)
@@ -298,6 +330,9 @@ func main() {
 	})
 	mux.HandleFunc("/order", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, staticDir+"/order.html")
+	})
+	mux.HandleFunc("/ws-purchase", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, staticDir+"/ws-purchase.html")
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
