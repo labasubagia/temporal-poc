@@ -29,7 +29,7 @@
                 <template x-for="field in fields" :key="field.model">
                     <div>
                         <label class="block text-sm text-gray-600 mb-1" x-text="field.label"></label>
-                        <input x-model="field.model" :type="field.type || 'text'" :placeholder="field.placeholder"
+                        <input :value="$data[field.model]" @input="$data[field.model] = $event.target.value" :type="field.type || 'text'" :placeholder="field.placeholder"
                             class="w-full px-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:border-gray-400 transition">
                     </div>
                 </template>
