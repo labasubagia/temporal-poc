@@ -1,3 +1,14 @@
+function injectNavbar() {
+    document.body.insertAdjacentHTML('afterbegin', `
+        <nav class="flex justify-center gap-4 mb-6">
+            <a href="/" class="px-4 py-2 rounded-lg bg-white shadow text-gray-700 hover:bg-gray-50">Home</a>
+            <a href="/payment" class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">Payment</a>
+            <a href="/order" class="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700">Order</a>
+            <a href="/failing" class="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700">Failing</a>
+        </nav>
+    `);
+}
+
 function workflowApp(config) {
     return {
         workflowId: '',
@@ -110,9 +121,13 @@ function workflowApp(config) {
         },
 
         copyWorkflowId() {
-            navigator.clipboard.writeText(this.workflowId);
-            this.copied = true;
-            setTimeout(() => this.copied = false, 2000);
+            try {
+                navigator.clipboard.writeText(this.workflowId);
+                this.copied = true;
+                setTimeout(() => this.copied = false, 2000);
+            } catch (e) {
+                console.warn('Clipboard unavailable:', e);
+            }
         },
 
         reset() {
