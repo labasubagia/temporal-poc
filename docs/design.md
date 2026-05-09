@@ -2,7 +2,7 @@
 
 ## Overview
 
-Payment processing workflow using Temporal for reliable, observable, long-running operations.
+Payment and Order processing workflows using Temporal for reliable, observable, long-running operations.
 
 ## Architecture
 
@@ -13,6 +13,14 @@ activities/       — Activity implementations (non-deterministic)
 workflow/         — Workflow definitions (deterministic)
 internal/         — Shared types
 ```
+
+## Frontend Routes
+
+| Path | Description |
+|------|-------------|
+| `/` | Routing page - select Payment or Order workflow |
+| `/payment` | Payment workflow UI |
+| `/order` | Order workflow UI |
 
 ## Payment Workflow
 
@@ -36,47 +44,37 @@ Total execution time: ~8 seconds.
 | ConfirmPayment | 2s | Confirm transaction |
 | SendNotification | 1s | Send notification to customer |
 
-Total execution time: ~8 seconds.
-
 ### Activity Options
 
 - StartToCloseTimeout: 2 minutes
 - HeartbeatTimeout: 30 seconds
 - Retry: Initial interval 1s, backoff 2x, max 5 attempts
 
-## Data Types
+## Order Fulfillment Workflow
 
-### PaymentRequest
+### Flowchart
 
-```go
-type PaymentRequest struct {
-    OrderID    string  `json:"order_id"`
-    Amount    float64 `json:"amount"`
-    CustomerID string `json:"customer_id"`
-}
+```mermaid
+flowchart LR
+    A[ValidateInventory<br/>1s] --> B[CheckStock<br/>1s]
+    B --> C[ReservedItems<br/>1s]
+    C --> D[ProcessOrderPayment<br/>2s]
+    D --> E[ShipOrder<br/>2s]
+    E --> F[SendOrderNotification<br/>1s]
 ```
 
-### PaymentResult
+Total execution time: ~8 seconds.
 
-```go
-type PaymentResult struct {
-    TransactionID string `json:"transaction_id"`
-    Status       string `json:"status"`
-    Message     string `json:"message"`
-}
-```
+### Activities
 
-### WorkflowStatus (query response)
-
-```go
-type WorkflowStatus struct {
-    WorkflowID string `json:"workflow_id"`
-    Progress int    `json:"progress"`    // 0-100
-    Step     string `json:"step"`     // current step name
-    Activity string `json:"activity"` // current activity
-    Complete bool   `json:"complete"`
-}
-```
+| Activity | Duration | Description |
+|----------|----------|-------------|
+| ValidateInventory | 1s | Validate order and inventory |
+| CheckStock | 1s | Check stock availability |
+| ReservedItems | 1s | Reserve items in warehouse |
+| ProcessOrderPayment | 2s | Process payment |
+| ShipOrder | 2s | Ship order to customer |
+| SendOrderNotification | 1s | Send notification to customer |
 
 ## API Endpoints
 
@@ -96,69 +94,10 @@ Request:
 Response:
 ```json
 {
-    "workflow_id": "payment-ORD-123-xxx"
-}
-```
-
-### GET /api/payment/progress?workflow_id=X
-
-Query workflow progress.
-
-Response:
-```json
-{
     "workflow_id": "payment-ORD-123-xxx",
-    "progress": 50,
-    "step": "ProcessPayment",
-    "activity": "process-payment",
-    "complete": false
+    "run_id": "xxx"
 }
 ```
-
-## Key Concepts
-
-- **Workflow** — Deterministic execution, defines steps
-- **Activity** — Non-deterministic operations (simulated with sleep)
-- **Query handler** — Allows reading workflow state from outside without signals
-
-## Order Fulfillment Workflow
-
-### Purpose
-
-Demonstrates activity count tracking with progress calculation based on total activities executed.
-
-### Flowchart
-
-```mermaid
-flowchart LR
-    A[ValidateInventory<br/>1s] --> B[CheckStock<br/>1s]
-    B --> C[ReserveItems<br/>1s]
-    C --> D[ProcessPayment<br/>2s]
-    D --> E[ShipOrder<br/>2s]
-    E --> F[SendNotification<br/>1s]
-```
-
-Total execution time: ~8 seconds.
-
-### Activity Count Validation
-
-The workflow tracks executed activities:
-- `TotalActivities` = 6 (expected)
-- `ExecutedCount` incremented after each activity
-- Validates `ExecutedCount == TotalActivities` before completion
-
-### Activities
-
-| Activity | Duration | Description |
-|----------|----------|-------------|
-| ValidateInventory | 1s | Validate order and inventory |
-| CheckStock | 1s | Check stock availability |
-| ReserveItems | 1s | Reserve items in warehouse |
-| ProcessPayment | 2s | Process payment |
-| ShipOrder | 2s | Ship order to customer |
-| SendNotification | 1s | Send notification to customer |
-
-### New API Endpoints
 
 ### POST /api/order/start
 
@@ -176,24 +115,48 @@ Request:
 Response:
 ```json
 {
-    "workflow_id": "order-ORD-123-xxx"
+    "workflow_id": "order-ORD-123-xxx",
+    "run_id": "xxx"
 }
 ```
 
-### GET /api/payment/timeline?workflow_id=X
+### GET /api/workflow/timeline?workflow_id=X
 
-Updated to include `total_activities` field.
+Get workflow timeline from history.
+
+Response:
+```json
+{
+    "workflow_id": "payment-ORD-123-xxx",
+    "started_at_ms": 1778299327077,
+    "ended_at_ms": 1778299335611,
+    "progress": 100,
+    "total_activities": 4,
+    "activities": [...]
+}
+```
+
+### GET /api/workflow/timeline-with-total-subprocess?workflow_id=X
+
+Get workflow timeline with total activities from query handler.
 
 Response:
 ```json
 {
     "workflow_id": "order-ORD-123-xxx",
-    "progress": 50,
+    "started_at_ms": 1778299301380,
+    "ended_at_ms": 1778299317270,
+    "progress": 100,
     "total_activities": 6,
-    "activities": [
-        {"name": "ValidateInventory", "status": "completed", "duration_ms": 1000},
-        {"name": "CheckStock", "status": "completed", "duration_ms": 1000},
-        {"name": "ReserveItems", "status": "running"}
-    ]
+    "activities": [...]
 }
 ```
+
+### GET /api/workflow/result?workflow_id=X
+
+## Key Concepts
+
+- **Workflow** — Deterministic execution, defines steps
+- **Activity** — Non-deterministic operations (simulated with sleep)
+- **Query handler** — Allows reading workflow state from outside without signals
+- **Timeline API** — Reads workflow history to show activity progress
