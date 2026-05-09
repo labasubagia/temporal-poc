@@ -29,60 +29,46 @@ func PurchaseOrderWorkflow(ctx workflow.Context, req internal.PurchaseRequest) (
 
 	totalActivities := 7
 
-	notify := func(fn any, status string) {
-		_ = activities.NotifyProgress(context.Background(), wfID, fn, status, totalActivities)
+	// helper to execute an activity and send start/failed/completed notifications
+	withNotify := func(fn any, out any, args ...any) error {
+		_ = activities.NotifyProgress(context.Background(), wfID, fn, activities.STATUS_STARTED, totalActivities)
+		if err := workflow.ExecuteActivity(ctx, fn, args...).Get(ctx, out); err != nil {
+			_ = activities.NotifyProgress(context.Background(), wfID, fn, activities.STATUS_FAILED, totalActivities)
+			return err
+		}
+		_ = activities.NotifyProgress(context.Background(), wfID, fn, activities.STATUS_COMPLETED, totalActivities)
+		return nil
 	}
 
-	notify(a.CreatePurchaseOrder, activities.STATUS_STARTED)
-	if err := workflow.ExecuteActivity(ctx, a.CreatePurchaseOrder, req.OrderID, req.CustomerID, req.Items).Get(ctx, nil); err != nil {
-		notify(a.CreatePurchaseOrder, activities.STATUS_FAILED)
+	if err := withNotify(a.CreatePurchaseOrder, nil, req.OrderID, req.CustomerID, req.Items); err != nil {
 		return nil, err
 	}
-	notify(a.CreatePurchaseOrder, activities.STATUS_COMPLETED)
 
-	notify(a.ValidateStock, activities.STATUS_STARTED)
-	if err := workflow.ExecuteActivity(ctx, a.ValidateStock, req.OrderID).Get(ctx, nil); err != nil {
-		notify(a.ValidateStock, activities.STATUS_FAILED)
+	if err := withNotify(a.ValidateStock, nil, req.OrderID); err != nil {
 		return nil, err
 	}
-	notify(a.ValidateStock, activities.STATUS_COMPLETED)
 
-	notify(a.AllocateItems, activities.STATUS_STARTED)
-	if err := workflow.ExecuteActivity(ctx, a.AllocateItems, req.OrderID).Get(ctx, nil); err != nil {
-		notify(a.AllocateItems, activities.STATUS_FAILED)
+	if err := withNotify(a.AllocateItems, nil, req.OrderID); err != nil {
 		return nil, err
 	}
-	notify(a.AllocateItems, activities.STATUS_COMPLETED)
 
-	notify(a.CalculatePricing, activities.STATUS_STARTED)
 	var amount float64
-	if err := workflow.ExecuteActivity(ctx, a.CalculatePricing, req.OrderID).Get(ctx, &amount); err != nil {
-		notify(a.CalculatePricing, activities.STATUS_FAILED)
+	if err := withNotify(a.CalculatePricing, &amount, req.OrderID); err != nil {
 		return nil, err
 	}
-	notify(a.CalculatePricing, activities.STATUS_COMPLETED)
 
-	notify(a.ConfirmOrder, activities.STATUS_STARTED)
-	if err := workflow.ExecuteActivity(ctx, a.ConfirmOrder, req.OrderID).Get(ctx, nil); err != nil {
-		notify(a.ConfirmOrder, activities.STATUS_FAILED)
+	if err := withNotify(a.ConfirmOrder, nil, req.OrderID); err != nil {
 		return nil, err
 	}
-	notify(a.ConfirmOrder, activities.STATUS_COMPLETED)
 
-	notify(a.NotifyCustomer, activities.STATUS_STARTED)
-	if err := workflow.ExecuteActivity(ctx, a.NotifyCustomer, req.CustomerID).Get(ctx, nil); err != nil {
-		notify(a.NotifyCustomer, activities.STATUS_FAILED)
+	if err := withNotify(a.NotifyCustomer, nil, req.CustomerID); err != nil {
 		return nil, err
 	}
-	notify(a.NotifyCustomer, activities.STATUS_COMPLETED)
 
-	notify(a.CompletePurchase, activities.STATUS_STARTED)
 	var result *activities.PurchaseResult
-	if err := workflow.ExecuteActivity(ctx, a.CompletePurchase, req.OrderID, amount).Get(ctx, &result); err != nil {
-		notify(a.CompletePurchase, activities.STATUS_FAILED)
+	if err := withNotify(a.CompletePurchase, &result, req.OrderID, amount); err != nil {
 		return nil, err
 	}
-	notify(a.CompletePurchase, activities.STATUS_COMPLETED)
 
 	return result, nil
 }
