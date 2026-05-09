@@ -16,7 +16,7 @@ function workflowApp(config) {
         loading: false,
         error: '',
         copied: false,
-        pollInterval: null,
+        polling: false,
         timeline: [],
         timelineTotalMs: 0,
         timelineStartMs: 0,
@@ -26,7 +26,7 @@ function workflowApp(config) {
             config.fields.forEach(f => this[f.model] = f.default || '');
         },
 
-        startWorkflow() {
+        async startWorkflow() {
             this.loading = true;
             this.error = '';
             this.progress = 0;
@@ -39,40 +39,38 @@ function workflowApp(config) {
                 payload[f.key] = f.type === 'number' ? parseFloat(val) : val;
             });
 
-            fetch(config.apiEndpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            })
-            .then(res => res.json())
-            .then(data => {
+            try {
+                const res = await fetch(config.apiEndpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+
                 this.workflowId = data.workflow_id;
                 this.loading = false;
-                this.startPolling();
-            })
-            .catch(err => {
+                this.polling = true;
+                this.runPollLoop();
+            } catch (err) {
                 this.error = 'Failed to start: ' + err.message;
                 this.loading = false;
-            });
+            }
         },
 
-        startPolling() {
-            this.pollInterval = setInterval(() => this.poll(), 1000);
-        },
-
-        poll() {
-            const url = `/api/workflow/timeline?workflow_id=${this.workflowId}` +
-                (config.expectedTotal ? '&expected_total=true' : '');
-            fetch(url)
-                .then(r => r.json())
-                .then(tl => {
-                    if (config.onTimeline) {
-                        config.onTimeline.call(this, tl);
-                    } else {
-                        this.handleTimeline(tl);
-                    }
-                })
-                .catch(err => console.error('Poll error:', err));
+        async runPollLoop() {
+            while (this.polling) {
+                try {
+                    const url = `/api/workflow/timeline?workflow_id=${this.workflowId}` +
+                        (config.expectedTotal ? '&expected_total=true' : '');
+                    const res = await fetch(url);
+                    const tl = await res.json();
+                    if (!this.polling) break;
+                    this.handleTimeline(tl);
+                } catch (err) {
+                    console.error('Poll error:', err);
+                }
+                await new Promise(r => setTimeout(r, 1000));
+            }
         },
 
         handleTimeline(tl) {
@@ -88,7 +86,7 @@ function workflowApp(config) {
                     this.progress = tl.total_activities > 0 ? Math.round((completed / tl.total_activities) * 100) : 0;
                     this.error = 'Failed at: ' + failed.name;
                     this.activity = failed.name;
-                    this.stopPolling();
+                    this.polling = false;
                     return;
                 }
 
@@ -99,14 +97,7 @@ function workflowApp(config) {
             if (tl.ended_at_ms || tl.progress >= 100) {
                 this.progress = 100;
                 this.activity = 'Complete';
-                this.stopPolling();
-            }
-        },
-
-        stopPolling() {
-            if (this.pollInterval) {
-                clearInterval(this.pollInterval);
-                this.pollInterval = null;
+                this.polling = false;
             }
         },
 
@@ -135,7 +126,7 @@ function workflowApp(config) {
             this.activity = '';
             this.timeline = [];
             this.error = '';
-            this.stopPolling();
+            this.polling = false;
         }
     };
 }
