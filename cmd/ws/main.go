@@ -165,9 +165,10 @@ func handleNotify(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 
 	var payload struct {
-		WorkflowID string `json:"workflow_id"`
-		Activity   string `json:"activity"`
-		Status     string `json:"status"`
+		WorkflowID      string `json:"workflow_id"`
+		Activity         string `json:"activity"`
+		Status           string `json:"status"`
+		TotalActivities  int    `json:"total_activities"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -175,10 +176,10 @@ func handleNotify(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Received notification: %s %s %s", payload.WorkflowID, payload.Activity, payload.Status)
+	log.Printf("Received notification: %s %s %s total=%d", payload.WorkflowID, payload.Activity, payload.Status, payload.TotalActivities)
 
-	hub.BroadcastForWorkflow(payload.WorkflowID, []byte(`{"activity":"`+payload.Activity+
-		`","status":"`+payload.Status+`","workflow_id":"`+payload.WorkflowID+`"}`))
+	data, _ := json.Marshal(payload)
+	hub.BroadcastForWorkflow(payload.WorkflowID, data)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})

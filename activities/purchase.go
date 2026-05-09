@@ -1,11 +1,8 @@
 package activities
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"time"
 )
 
@@ -16,7 +13,7 @@ func NewPurchase() *PurchaseActivities {
 }
 
 func (a *PurchaseActivities) CreatePurchaseOrder(ctx context.Context, orderID, customerID string, items []string) error {
-	time.Sleep(1 * time.Second)
+	time.Sleep(3 * time.Second)
 	return nil
 }
 
@@ -60,15 +57,4 @@ func (a *PurchaseActivities) CompletePurchase(ctx context.Context, orderID strin
 		Status:      "completed",
 		Message:     fmt.Sprintf("Order %s completed successfully", orderID),
 	}, nil
-}
-
-func NotifyProgress(ctx context.Context, workflowID, activityName, status string) error {
-	payload := map[string]string{
-		"workflow_id": workflowID,
-		"activity":   activityName,
-		"status":     status,
-	}
-	body, _ := json.Marshal(payload)
-	_, _ = http.Post("http://localhost:8081/ws/notify", "application/json", bytes.NewReader(body))
-	return nil
 }
