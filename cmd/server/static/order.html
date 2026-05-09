@@ -146,7 +146,7 @@
                 },
 
                 poll() {
-                    fetch(`/api/workflow/timeline-with-total-subprocess?workflow_id=${this.workflowId}`)
+                    fetch(`/api/workflow/timeline?workflow_id=${this.workflowId}&expected_total=true`)
                         .then(r => r.json())
                         .then(tl => {
                             this.progress = tl.progress || 0;

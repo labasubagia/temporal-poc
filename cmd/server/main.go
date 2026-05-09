@@ -90,6 +90,16 @@ func (s *Server) handleGetWorkflowTimeline(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	expectedTotal := r.URL.Query().Get("expected_total") == "true"
+	totalSubProcess := 0
+
+	if expectedTotal {
+		remoteVal, err := s.temporal.QueryWorkflow(r.Context(), workflowID, "", wf.QUERY_TOTAL_SUBPROCESS)
+		if err == nil {
+			remoteVal.Get(&totalSubProcess)
+		}
+	}
+
 	iter := s.temporal.GetWorkflowHistory(
 		r.Context(), workflowID, "", false,
 		enums.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT,
@@ -99,7 +109,7 @@ func (s *Server) handleGetWorkflowTimeline(w http.ResponseWriter, r *http.Reques
 	scheduledAt := map[int64]int64{}
 	activityName := map[int64]string{}
 	spans := map[int64]*internal.ActivitySpan{}
-	totalActivities := 0
+	scheduledCount := 0
 	completedActivities := 0
 
 	for iter.HasNext() {
@@ -121,7 +131,7 @@ func (s *Server) handleGetWorkflowTimeline(w http.ResponseWriter, r *http.Reques
 			attrs := event.GetActivityTaskScheduledEventAttributes()
 			scheduledAt[event.GetEventId()] = ts
 			activityName[event.GetEventId()] = attrs.GetActivityType().GetName()
-			totalActivities++
+			scheduledCount++
 		case enums.EVENT_TYPE_ACTIVITY_TASK_STARTED:
 			attrs := event.GetActivityTaskStartedEventAttributes()
 			schedID := attrs.GetScheduledEventId()
@@ -165,10 +175,14 @@ func (s *Server) handleGetWorkflowTimeline(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	result.TotalActivities = totalActivities
-
-	if totalActivities > 0 {
-		result.Progress = (completedActivities * 100) / totalActivities
+	if expectedTotal && totalSubProcess > 0 {
+		result.TotalActivities = totalSubProcess
+		result.Progress = (completedActivities * 100) / totalSubProcess
+	} else {
+		result.TotalActivities = scheduledCount
+		if scheduledCount > 0 {
+			result.Progress = (completedActivities * 100) / scheduledCount
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -189,102 +203,6 @@ func (s *Server) handleGetWorkflowResult(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("workflow not completed: %v", err), http.StatusInternalServerError)
 		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
-}
-
-func (s *Server) handleGetWorkflowTimelineWithTotalSubprocess(w http.ResponseWriter, r *http.Request) {
-	workflowID := r.URL.Query().Get("workflow_id")
-	if workflowID == "" {
-		http.Error(w, "workflow_id is required", http.StatusBadRequest)
-		return
-	}
-
-	remoteVal, err := s.temporal.QueryWorkflow(r.Context(), workflowID, "", wf.QUERY_TOTAL_SUBPROCESS)
-	var totalActivities int
-	if err == nil {
-		remoteVal.Get(&totalActivities)
-	}
-
-	iter := s.temporal.GetWorkflowHistory(
-		r.Context(), workflowID, "", false,
-		enums.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT,
-	)
-
-	result := internal.TimelineResponse{WorkflowID: workflowID}
-	scheduledAt := map[int64]int64{}
-	activityName := map[int64]string{}
-	spans := map[int64]*internal.ActivitySpan{}
-	completedActivities := 0
-
-	for iter.HasNext() {
-		event, err := iter.Next()
-		if err != nil {
-			http.Error(w, fmt.Sprintf("failed to read history: %v", err), http.StatusInternalServerError)
-			return
-		}
-
-		ts := event.GetEventTime().AsTime().UnixMilli()
-		switch event.GetEventType() {
-		case enums.EVENT_TYPE_WORKFLOW_EXECUTION_STARTED:
-			result.StartedAt = ts
-		case enums.EVENT_TYPE_WORKFLOW_EXECUTION_COMPLETED,
-			enums.EVENT_TYPE_WORKFLOW_EXECUTION_FAILED,
-			enums.EVENT_TYPE_WORKFLOW_EXECUTION_TIMED_OUT:
-			result.EndedAt = ts
-		case enums.EVENT_TYPE_ACTIVITY_TASK_SCHEDULED:
-			attrs := event.GetActivityTaskScheduledEventAttributes()
-			scheduledAt[event.GetEventId()] = ts
-			activityName[event.GetEventId()] = attrs.GetActivityType().GetName()
-		case enums.EVENT_TYPE_ACTIVITY_TASK_STARTED:
-			attrs := event.GetActivityTaskStartedEventAttributes()
-			schedID := attrs.GetScheduledEventId()
-			span := &internal.ActivitySpan{
-				Name:       activityName[schedID],
-				StartedAt:  scheduledAt[schedID],
-				Status:     "running",
-			}
-			spans[schedID] = span
-			result.Activities = append(result.Activities, *span)
-		case enums.EVENT_TYPE_ACTIVITY_TASK_COMPLETED:
-			attrs := event.GetActivityTaskCompletedEventAttributes()
-			schedID := attrs.GetScheduledEventId()
-			if span, ok := spans[schedID]; ok {
-				span.EndedAt = ts
-				span.DurationMs = ts - span.StartedAt
-				span.Status = "completed"
-				completedActivities++
-				for i := range result.Activities {
-					if result.Activities[i].Name == span.Name && result.Activities[i].Status == "running" {
-						result.Activities[i] = *span
-						break
-					}
-				}
-			}
-		case enums.EVENT_TYPE_ACTIVITY_TASK_FAILED:
-			attrs := event.GetActivityTaskFailedEventAttributes()
-			schedID := attrs.GetScheduledEventId()
-			if span, ok := spans[schedID]; ok {
-				span.EndedAt = ts
-				span.DurationMs = ts - span.StartedAt
-				span.Status = "failed"
-				completedActivities++
-				for i := range result.Activities {
-					if result.Activities[i].Name == span.Name && result.Activities[i].Status == "running" {
-						result.Activities[i] = *span
-						break
-					}
-				}
-			}
-		}
-	}
-
-	result.TotalActivities = totalActivities
-
-	if totalActivities > 0 {
-		result.Progress = (completedActivities * 100) / totalActivities
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -327,7 +245,6 @@ func main() {
 	mux.HandleFunc("/api/payment/start", server.handleStartPayment)
 	mux.HandleFunc("/api/order/start", server.handleStartOrder)
 	mux.HandleFunc("/api/workflow/result", server.handleGetWorkflowResult)
-	mux.HandleFunc("/api/workflow/timeline-with-total-subprocess", server.handleGetWorkflowTimelineWithTotalSubprocess)
 	mux.HandleFunc("/api/workflow/timeline", server.handleGetWorkflowTimeline)
 	mux.HandleFunc("/payment", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, staticDir+"/payment.html")
