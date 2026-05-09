@@ -167,6 +167,19 @@ Response:
 
 The timeline API (`GET /api/workflow/timeline?workflow_id=X`) calculates progress based on completed activities.
 
+```mermaid
+flowchart TD
+    A[Frontend Polls /timeline] --> B{expected_total?}
+    B -->|true| C[Query workflow for total activities]
+    B -->|false| D[Count scheduled from history]
+    C --> E[progress = completed / total]
+    D --> F[progress = completed / scheduled]
+    E --> G[Return accurate progress]
+    F --> H[Return estimate progress]
+    G --> I[Frontend displays progress]
+    H --> I
+```
+
 **With `expected_total=true`:**
 
 The API queries the workflow via a query handler (`wf.QUERY_TOTAL_SUBPROCESS`) to get the total number of activities upfront. Progress is calculated as:
@@ -195,6 +208,38 @@ So without `expected_total`, progress jumps to ~50% once the second activity sta
 See `cmd/server/main.go:206` (`handleGetWorkflowTimeline`) and `cmd/server/main.go:36` (`buildTimelineFromHistory`).
 
 ### Frontend Polling
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant F as Frontend
+    participant S as Server API
+    participant T as Temporal
+
+    U->>F: Click "Start Workflow"
+    F->>S: POST /api/payment/start
+    S->>T: Start workflow
+    T-->>S: workflow_id
+    S-->>F: {workflow_id: "..."}
+    F->>S: GET /api/workflow/timeline?workflow_id=...&expected_total=true
+    loop Every 1 second
+        S->>T: Query workflow history
+        T-->>S: Activity events
+        S-->>F: {progress: X, activities: [...]}
+        F->>F: Update UI
+    end
+    T-->>F: Workflow completes
+    F->>F: Stop polling, show Complete
+```
+
+The frontend uses polling to fetch timeline/progress:
+
+- `workflow-app.js` — Async/await polling loop with 1-second interval
+- `runPollLoop()` fetches `/api/workflow/timeline` repeatedly until workflow completes or fails
+- For workflows with known activity count (Payment, Order, Failing), `expected_total=true` is passed for accurate progress
+- For dynamic/unknown workflows, default behavior is used
+
+The polling approach ensures the UI stays updated without needing WebSockets or server push.
 
 The frontend uses polling to fetch timeline/progress:
 
