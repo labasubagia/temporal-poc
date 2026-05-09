@@ -10,36 +10,23 @@
     <script src="/static/workflow-app.js"></script>
 </head>
 
-<body class="bg-gray-100 min-h-screen p-4">
-    <script>injectNavbar()</script>
-    <div class="w-full max-w-lg flex items-center justify-center container mx-auto">
-        <div class="bg-white rounded-2xl shadow-xl p-8 text-center">
-            <h1 class="text-3xl font-bold text-gray-800 mb-4">Temporal Workflows</h1>
-            <p class="text-gray-500 text-sm mb-8">Select a workflow to run</p>
+<body class="bg-gray-50 min-h-screen p-4">
+    <script>injectNavbar('/')</script>
+    <div class="w-full max-w-lg mx-auto">
+        <div class="border border-gray-200 bg-white rounded-lg p-8">
+            <h1 class="text-2xl font-medium text-gray-900 mb-2">Temporal Workflows</h1>
+            <p class="text-gray-400 text-sm mb-8">Select a workflow to run</p>
 
-            <div class="space-y-4">
-                <a href="/payment"
-                    class="block w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 px-6 rounded-lg transition">
+            <div class="space-y-3">
+                <a href="/payment" class="block w-full py-3 px-4 text-center text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-md transition">
                     Payment Workflow
                 </a>
-                <a href="/order"
-                    class="block w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-4 px-6 rounded-lg transition">
+                <a href="/order" class="block w-full py-3 px-4 text-center text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-md transition">
                     Order Workflow
                 </a>
-                <a href="/failing"
-                    class="block w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-4 px-6 rounded-lg transition">
+                <a href="/failing" class="block w-full py-3 px-4 text-center text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-md transition">
                     Failing Workflow
                 </a>
-            </div>
-
-            <div class="mt-8 pt-8 border-t border-gray-200">
-                <p class="text-xs text-gray-400 mb-2">Or use direct URLs:</p>
-                <div class="flex gap-4 justify-center">
-                    <a href="/static/payment.html"
-                        class="text-sm text-blue-600 hover:text-blue-800">/static/payment.html</a>
-                    <a href="/static/order.html"
-                        class="text-sm text-green-600 hover:text-green-800">/static/order.html</a>
-                </div>
             </div>
         </div>
     </div>

@@ -1,12 +1,11 @@
-function injectNavbar() {
-    document.body.insertAdjacentHTML('afterbegin', `
-        <nav class="flex justify-center gap-4 mb-6">
-            <a href="/" class="px-4 py-2 rounded-lg bg-white shadow text-gray-700 hover:bg-gray-50">Home</a>
-            <a href="/payment" class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">Payment</a>
-            <a href="/order" class="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700">Order</a>
-            <a href="/failing" class="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700">Failing</a>
-        </nav>
-    `);
+function injectNavbar(currentPage) {
+    const routes = { '/': 'Home', '/payment': 'Payment', '/order': 'Order', '/failing': 'Failing' };
+    const active = currentPage || window.location.pathname;
+    const html = Object.entries(routes).map(([path, label]) => {
+        const isActive = active === path;
+        return `<a href="${path}" class="px-4 py-2 text-sm border-b-2 transition ${isActive ? 'text-gray-800 border-gray-800' : 'text-gray-400 border-transparent hover:text-gray-600 hover:border-gray-300'}">${label}</a>`;
+    }).join('');
+    document.body.insertAdjacentHTML('afterbegin', `<nav class="flex justify-center gap-2 mb-8">${html}</nav>`);
 }
 
 function workflowApp(config) {
