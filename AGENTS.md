@@ -1,6 +1,7 @@
 # Agent Instructions
 
 See [README.md](README.md) for project documentation and setup.
+See [docs/](docs/) for design documentation.
 
 ## Quick commands
 
