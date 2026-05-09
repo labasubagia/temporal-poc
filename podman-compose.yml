@@ -1,0 +1,13 @@
+# Podman / Docker compose file for Temporal
+# Works with both `docker compose` and `podman compose`
+
+services:
+  temporal:
+    image: temporalio/temporal:latest
+    network_mode: host
+    volumes:
+      - temporal-data:/home/temporal
+    command: server start-dev --ip 0.0.0.0 --db-filename /home/temporal/temporal.db
+
+volumes:
+  temporal-data:
