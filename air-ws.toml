@@ -1,0 +1,12 @@
+[build]
+  cmd = "go build -o ./bin/ws ./cmd/ws"
+  entrypoint = "./bin/ws"
+  full_bin = "./bin/ws"
+  include_ext = ["go"]
+  exclude_dir = ["bin", "vendor", ".git", "cmd/server", "cmd/worker"]
+
+[run]
+  env_pass = ["TEMPORAL_HOST_URL", "TEMPORAL_NAMESPACE"]
+
+[log]
+  main_only = false

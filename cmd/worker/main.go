@@ -48,4 +48,7 @@ func main() {
 	if err := w.Run(worker.InterruptCh()); err != nil {
 		log.Fatalf("worker error: %v", err)
 	}
+
+	c.Close()
+	log.Println("Worker stopped")
 }

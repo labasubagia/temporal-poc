@@ -1,11 +1,16 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -191,17 +196,43 @@ func main() {
 	hub := NewHub()
 	go hub.Run()
 
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(hub, w, r)
 	})
 
-	http.HandleFunc("/ws/notify", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/ws/notify", func(w http.ResponseWriter, r *http.Request) {
 		handleNotify(hub, w, r)
 	})
 
-	log.Printf("WebSocket server starting on :%s", *port)
-	log.Println("Endpoints:")
-	log.Println("  /ws?workflow_id=X   - WebSocket connection")
-	log.Println("  /ws/notify          - Receive activity notifications from workflow")
-	log.Fatal(http.ListenAndServe(":"+*port, nil))
+	srv := &http.Server{
+		Addr:    ":" + *port,
+		Handler: mux,
+	}
+
+	// Graceful shutdown
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		log.Printf("WebSocket server starting on :%s", *port)
+		log.Println("Endpoints:")
+		log.Println("  /ws?workflow_id=X   - WebSocket connection")
+		log.Println("  /ws/notify          - Receive activity notifications from workflow")
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server error: %v", err)
+		}
+	}()
+
+	<-stop
+	log.Println("Shutting down ws-server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("Server shutdown error: %v", err)
+	}
+
+	log.Println("Ws-server stopped")
 }
