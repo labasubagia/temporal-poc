@@ -1,5 +1,7 @@
 FROM golang:1.26-alpine
 
+RUN apk add --no-cache wget
+
 WORKDIR /app
 
 RUN go install github.com/cosmtrek/air@v1.52.0

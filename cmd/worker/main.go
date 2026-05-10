@@ -7,6 +7,7 @@ import (
 	"github.com/labasubagia/temporal-poc/activities"
 	"github.com/labasubagia/temporal-poc/workflow"
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/contrib/sysinfo"
 	"go.temporal.io/sdk/worker"
 )
 
@@ -32,6 +33,7 @@ func main() {
 
 	w := worker.New(c, "payment-worker", worker.Options{
 		MaxConcurrentActivityExecutionSize: 1,
+		SysInfoProvider: sysinfo.SysInfoProvider(),
 	})
 
 

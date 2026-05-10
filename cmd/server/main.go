@@ -337,6 +337,10 @@ func main() {
 	mux.HandleFunc("/ws-purchase", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, staticDir+"/ws-purchase.html")
 	})
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
 			http.ServeFile(w, r, staticDir+"/index.html")

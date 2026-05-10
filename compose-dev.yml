@@ -30,6 +30,12 @@ services:
       - WS_PORT=8081
       - WS_HOST=ws-server
     command: air -c /app/air-ws.toml
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   worker:
     build:
@@ -65,6 +71,12 @@ services:
       - TEMPORAL_NAMESPACE=default
       - PORT=8080
     command: air -c /app/air-server.toml
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   temporal-dev-data:
