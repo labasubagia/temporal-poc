@@ -43,6 +43,12 @@ internal/         — Shared types
 
 See [docs/design.md](docs/design.md) for detailed documentation.
 
+## Demo
+
+<video controls>
+  <source src="docs/demo.mp4" type="video/mp4">
+</video>
+
 ## How it works
 
 1. Frontend calls `POST /api/payment/start` with payment details
