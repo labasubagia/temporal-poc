@@ -39,7 +39,7 @@ internal/         — Shared types
 | Approach | Workflows | Mechanism |
 |----------|-----------|-----------|
 | **Polling** | Payment, Order, Failing | Frontend polls `/api/workflow/timeline` every 1s |
-| **WebSocket** | Purchase Order | Real-time signals via ws-server |
+| **WebSocket** | Purchase Order | Real-time updates via ws-server |
 
 See [docs/design.md](docs/design.md) for detailed documentation.
 
@@ -49,15 +49,23 @@ See [docs/design.md](docs/design.md) for detailed documentation.
 
 ## How it works
 
-1. Frontend calls `POST /api/payment/start` with payment details
+**Payment, Order, Failing workflows (Polling):**
+1. Frontend calls `POST /api/payment/start` with workflow parameters
 2. Server starts a Temporal workflow and returns `workflow_id`
-3. Frontend polls `GET /api/payment/progress?workflow_id=X` every 500ms
-4. Progress updates display in the UI with percentage
+3. Frontend polls `GET /api/workflow/timeline?workflow_id=X&expected_total=true` every 1s
+4. Progress calculated as `(completed_activities * 100) / total_activities`
+
+**Purchase Order workflow (WebSocket real-time):**
+1. Frontend calls `POST /api/purchase/start`
+2. Server starts workflow and returns `workflow_id`
+3. Frontend connects to `ws://localhost:8081/ws?workflow_id=X`
+4. Worker calls `NotifyProgress` activity after each step
+5. ws-server broadcasts updates to connected clients in real-time
 
 ### Key concepts
 
-- **Workflow** — Defines steps as deterministic execution
-- **Activity** — Non-deterministic operations (DB, HTTP, etc.)
+- **Workflow** — Deterministic execution, defines steps as code
+- **Activity** — Non-deterministic operations (DB, HTTP, file I/O)
 - **Query handler** — Allows reading workflow state from outside
 
 ## Setup
