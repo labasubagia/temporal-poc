@@ -64,25 +64,39 @@ cp .env.example .env
 
 ## Running
 
+### Option 1: Docker Compose (Recommended for development)
+
+```sh
+podman compose -f compose-dev.yml up -d
+```
+
+This starts all services with live-reload:
+- **temporal**: Temporal server on port 7233
+- **server**: HTTP server on port 8080
+- **worker**: Temporal worker
+- **ws-server**: WebSocket server on port 8081
+
+### Option 2: Manual
+
 ### 1. Start Temporal
 
 ```sh
 podman compose up -d
 ```
 
-### 2. Start worker (development)
+### 2. Start worker
 
 ```sh
 air -c air-worker.toml
 ```
 
-### 3. Start server (development)
+### 3. Start server
 
 ```sh
 air -c air-server.toml
 ```
 
-### 4. Start WebSocket server (development)
+### 4. Start WebSocket server
 
 ```sh
 air -c air-ws.toml
