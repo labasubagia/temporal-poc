@@ -45,9 +45,7 @@ See [docs/design.md](docs/design.md) for detailed documentation.
 
 ## Demo
 
-<video controls>
-  <source src="docs/demo.mp4" type="video/mp4">
-</video>
+![Workflow Demo](docs/demo.mp4)
 
 ## How it works
 
