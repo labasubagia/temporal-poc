@@ -15,11 +15,13 @@ golangci-lint run
 
 ```sh
 air -c air-worker.toml          # Start Temporal worker (dev)
-air -c air-server.toml         # Start frontend/server (dev)
-go run ./cmd/worker            # Start Temporal worker (prod)
-go run ./cmd/server           # Start frontend/server (prod)
-go test ./...                  # Run tests
-golangci-lint run              # Lint
+air -c air-server.toml          # Start frontend/server (dev)
+air -c air-ws.toml              # Start WebSocket server (dev)
+go run ./cmd/worker             # Start Temporal worker (prod)
+go run ./cmd/server             # Start frontend/server (prod)
+go run ./cmd/ws                  # Start WebSocket server (prod)
+go test ./...                   # Run tests
+golangci-lint run               # Lint
 ```
 
 ## Key constraints
