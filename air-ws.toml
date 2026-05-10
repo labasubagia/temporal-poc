@@ -1,12 +1,10 @@
 [build]
-  cmd = "go build -o ./bin/ws ./cmd/ws"
-  entrypoint = "./bin/ws"
-  full_bin = "./bin/ws"
-  include_ext = ["go"]
-  exclude_dir = ["bin", "vendor", ".git", "cmd/server", "cmd/worker"]
+  cmd = "go build -o tmp/ws github.com/labasubagia/temporal-poc/cmd/ws"
+  bin = "tmp/ws"
+  exclude_dir = ["vendor", ".git", "cmd/server", "cmd/worker", "tmp", "bin"]
 
 [run]
-  env_pass = ["TEMPORAL_HOST_URL", "TEMPORAL_NAMESPACE"]
+  env_pass = ["WS_PORT", "WS_HOST"]
 
 [log]
   main_only = false

@@ -4,10 +4,18 @@
 services:
   temporal:
     image: temporalio/temporal:latest
-    network_mode: host
+    ports:
+      - 7233:7233
+      - 8233:8233
     volumes:
       - temporal-data:/home/temporal
     command: server start-dev --ip 0.0.0.0 --db-filename /home/temporal/temporal.db
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
 volumes:
   temporal-data:

@@ -4,3 +4,4 @@ bin/
 /ws-server
 *.out
 /tmp
+.env

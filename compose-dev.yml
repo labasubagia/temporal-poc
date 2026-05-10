@@ -1,0 +1,70 @@
+services:
+  temporal:
+    image: temporalio/temporal:latest
+    ports:
+      - 7233:7233
+      - 8233:8233
+    volumes:
+      - temporal-dev-data:/home/temporal
+    command: server start-dev --ip 0.0.0.0 --db-filename /home/temporal/temporal.db
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  ws-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    working_dir: /app
+    depends_on:
+      temporal:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    ports:
+      - 8081:8081
+    environment:
+      - WS_PORT=8081
+      - WS_HOST=ws-server
+    command: air -c /app/air-ws.toml
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    working_dir: /app
+    depends_on:
+      temporal:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    environment:
+      - TEMPORAL_HOST_URL=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - WS_PORT=8081
+      - WS_HOST=ws-server
+    command: air -c /app/air-worker.toml
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    working_dir: /app
+    depends_on:
+      temporal:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    ports:
+      - 8080:8080
+    environment:
+      - TEMPORAL_HOST_URL=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - PORT=8080
+    command: air -c /app/air-server.toml
+
+volumes:
+  temporal-dev-data:

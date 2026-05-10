@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
 	"reflect"
 	"runtime"
 	"strings"
@@ -16,6 +18,20 @@ const (
 	STATUS_FAILED    = "failed"
 )
 
+func wsNotifyURL() string {
+	if url := os.Getenv("WS_NOTIFY_URL"); url != "" {
+		return url
+	}
+	host := os.Getenv("WS_HOST")
+	if host == "" {
+		host = "localhost"
+	}
+	port := os.Getenv("WS_PORT")
+	if port == "" {
+		port = "8081"
+	}
+	return fmt.Sprintf("http://%s:%s/ws/notify", host, port)
+}
 
 func NotifyProgress(ctx context.Context, workflowID, fn any, status string, totalActivities int) error {
 	activityName := GetFunctionName(fn)
@@ -26,7 +42,7 @@ func NotifyProgress(ctx context.Context, workflowID, fn any, status string, tota
 		"total_activities": totalActivities,
 	}
 	body, _ := json.Marshal(payload)
-	_, _ = http.Post("http://localhost:8081/ws/notify", "application/json", bytes.NewReader(body))
+	_, _ = http.Post(wsNotifyURL(), "application/json", bytes.NewReader(body))
 	return nil
 }
 

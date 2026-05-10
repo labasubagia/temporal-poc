@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -92,7 +91,12 @@ func (h *Hub) BroadcastForWorkflow(workflowID string, data []byte) {
 	}
 }
 
-var port = flag.String("port", "8081", "WebSocket server port")
+var port = func() string {
+	if p := os.Getenv("WS_PORT"); p != "" {
+		return p
+	}
+	return "8081"
+}()
 
 func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	workflowID := r.URL.Query().Get("workflow_id")
@@ -191,8 +195,6 @@ func handleNotify(hub *Hub, w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	flag.Parse()
-
 	hub := NewHub()
 	go hub.Run()
 
@@ -206,7 +208,7 @@ func main() {
 	})
 
 	srv := &http.Server{
-		Addr:    ":" + *port,
+		Addr:    ":" + port,
 		Handler: mux,
 	}
 
@@ -215,7 +217,7 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		log.Printf("WebSocket server starting on :%s", *port)
+		log.Printf("WebSocket server starting on :%s", port)
 		log.Println("Endpoints:")
 		log.Println("  /ws?workflow_id=X   - WebSocket connection")
 		log.Println("  /ws/notify          - Receive activity notifications from workflow")
