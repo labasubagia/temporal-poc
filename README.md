@@ -45,7 +45,7 @@ See [docs/design.md](docs/design.md) for detailed documentation.
 
 ## Demo
 
-![Workflow Demo](docs/demo.mp4)
+<video src="https://github.com/user-attachments/assets/abda8ed6-10b1-4ea6-8ffa-d6f44b44a371"></video>
 
 ## How it works
 
